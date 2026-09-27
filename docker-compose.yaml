@@ -1,0 +1,182 @@
+# ocr-financial-diary: Sure + ocr-server + Go Telegram bot.
+#
+#   docker compose up -d --build
+#   docker compose --profile backup up -d   # + daily DB backups
+#   docker compose --profile tunnel up -d   # + Cloudflare tunnel
+
+x-db-env: &db_env
+  POSTGRES_USER: ${POSTGRES_USER:-sure_user}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sure_password}
+  POSTGRES_DB: ${POSTGRES_DB:-sure_production}
+
+x-rails-env: &rails_env
+  <<: *db_env
+  # Keep the same value as before: changing it invalidates Sure's sessions and encrypted data.
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+  SELF_HOSTED: "true"
+  RAILS_FORCE_SSL: "false"
+  RAILS_ASSUME_SSL: "false"
+  DB_HOST: db
+  DB_PORT: 5432
+  REDIS_URL: redis://redis:6379/1
+  # NOTE: enabling OpenAI will incur costs when you use AI-related features in the app (chat, rules).
+  OPENAI_ACCESS_TOKEN: ${OPENAI_ACCESS_TOKEN}
+
+services:
+  # ---------------------------------------------------------------- Sure
+  sure-web:
+    image: ghcr.io/we-promise/sure:0.7.1
+    volumes:
+      - app-storage:/rails/storage
+    ports:
+      - ${PORT:-3000}:3000
+    restart: unless-stopped
+    environment:
+      <<: *rails_env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    networks:
+      - ocr-financial-diary
+
+  sure-worker:
+    image: ghcr.io/we-promise/sure:0.7.1
+    command: bundle exec sidekiq
+    volumes:
+      - app-storage:/rails/storage
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      <<: *rails_env
+    networks:
+      - ocr-financial-diary
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      <<: *db_env
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ocr-financial-diary
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ocr-financial-diary
+
+  backup:
+    profiles: ["backup"]
+    image: prodrigestivill/postgres-backup-local
+    restart: unless-stopped
+    volumes:
+      - ./sure/backups:/backups
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=${POSTGRES_DB:-sure_production}
+      - POSTGRES_USER=${POSTGRES_USER:-sure_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sure_password}
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=7
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+    depends_on:
+      - db
+    networks:
+      - ocr-financial-diary
+
+  # ---------------------------------------------------------------- Receipt pipeline
+  ocr-server:
+    build:
+      context: ./ocr-server
+    container_name: ocr-server
+    # Only the bot needs it (over the Docker network); published on localhost for curl/debugging.
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      OCR_DEVICE: ${OCR_DEVICE:-cpu}
+      OCR_LANG: ${OCR_LANG:-id}
+      OCR_DEFAULT_BANK: ${OCR_DEFAULT_BANK-BCA}
+      OCR_DOC_UNWARPING: ${OCR_DOC_UNWARPING:-false}
+      LOG_LEVEL: ${OCR_LOG_LEVEL:-INFO}
+    volumes:
+      - ./ocr-server/model:/home/appuser/.paddlex/official_models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ocr-financial-diary
+
+  # Telegram bot (Go): photo -> ocr-server -> Sure, with category buttons.
+  # Long polling: needs no public URL, tunnel or reverse proxy.
+  bot:
+    build:
+      context: ./telegram-bot
+    container_name: ocr-bot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
+      SURE_API_URL: ${SURE_API_URL:-http://sure-web:3000/api/v1}
+      SURE_API_KEY: ${SURE_API_KEY}
+      OCR_URL: http://ocr-server:8001
+      MAX_CONCURRENT_OCR: ${MAX_CONCURRENT_OCR:-1}
+      LOG_LEVEL: ${BOT_LOG_LEVEL:-info}
+    depends_on:
+      - ocr-server
+      - sure-web
+    networks:
+      - ocr-financial-diary
+
+  # ---------------------------------------------------------------- Optional
+  # Cloudflare tunnel, only if you use it to reach Sure (or anything else) from outside.
+  cloudflared-finance:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-finance
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TOKEN}
+    command: ["tunnel", "--no-autoupdate", "run"]
+    networks:
+      - ocr-financial-diary
+
+volumes:
+  app-storage:
+  postgres-data:
+  redis-data:
+
+networks:
+  ocr-financial-diary:
+    driver: bridge
+    name: ocr-financial-diary

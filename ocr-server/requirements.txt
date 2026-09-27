@@ -1,0 +1,9 @@
+anyio
+fastapi
+uvicorn
+gunicorn
+paddleocr[all]
+numpy
+opencv-python-headless
+python-multipart
+opencv-python

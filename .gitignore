@@ -1,0 +1,8 @@
+*/.env
+ocr-server/model
+__pycache__/
+.env
+
+# Real receipts (personal data): keep out of git
+bni-wondr-testcase/
+bca-mybca-testcase/
