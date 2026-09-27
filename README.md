@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.png" alt="ocr-financial-diary: receipt photo to Telegram to Sure, no typing" width="720">
+</p>
+
 # ocr-financial-diary
 
 ## Why tho? 🤔
