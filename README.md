@@ -1,12 +1,26 @@
 # ocr-financial-diary
 
-Send a photo of a bank transfer receipt to a Telegram bot, and it is recorded as a
-transaction in [Sure](https://github.com/we-promise/sure), a self-hosted personal finance app.
-Tap a button to categorize it. No typing.
+## Why tho? 🤔
 
-Everything runs on your own server: OCR is done locally with
-[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), and the bot talks to Telegram by long
-polling, so no public URL is needed.
+Logging every transaction by hand? Not it. Open app → pick account → type amount → type name →
+pick category… for every single coffee. I'm lazy, and I'd give up by day 3. 💀
+
+But my banking app already makes a receipt with all of that on it. So now I just **share the
+receipt to a Telegram bot**, and it lands in [Sure: The personal finance app for everyone](https://github.com/we-promise/sure): amount,
+date, account, fee, the whole thing. One tap for the category. Done. ✨
+
+### Who's it for?
+
+- 🦥 **Lazy (or busy) people**: share → tap → done. Catching up on a week of receipts? The real
+  dates are kept, no stress.
+- 🔒 **Privacy people**: self-host it. OCR runs locally using [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR), [Sure: The personal finance app for everyone](https://github.com/we-promise/sure) is yours, and no random cloud reads your
+  bank stuff.
+- 🏦 **Banks with no auto-sync**: every banking app can make a receipt, so no bank API needed.
+- 👨‍👩‍👧 **Households and small teams**: several people, one bot, one Sure.
+- 🛠️ **Tinkerers**: adding your bank is one small Python file.
+
+> **Heads up:** the receipt image does pass through Telegram on its way to your bot. Lock the bot to
+> your own chat with `TELEGRAM_ALLOWED_CHAT_IDS` and host it somewhere you trust.
 
 ## Features
 
