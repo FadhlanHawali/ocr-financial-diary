@@ -543,6 +543,9 @@ In Sure, the two Rp100.000 sides appear as an **Auto-matched** transfer; confirm
 Everyone allowed writes into the same Sure (one API key), so each person needs a Sure account
 whose name matches their `from_account`.
 
+<p align="center">
+  <img src="assets/example_sure.png" alt="ocr-financial-diary: receipt photo to Telegram to Sure, no typing" width="720">
+</p>
 ## Operations
 
 ### Deploying changes
